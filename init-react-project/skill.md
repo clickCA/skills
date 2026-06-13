@@ -1,255 +1,309 @@
 ---
-name: react-feature-architecture
+
+name: frontend-init-project
 description: >
-  Guidance for scaffolding and reviewing LLM-friendly, feature-based React
-  applications. Use this skill whenever the user asks about React project
-  structure, folder organisation, feature-based architecture, or how to
-  organise a React codebase for better AI-assisted development. Also trigger
-  when the user asks to scaffold a new feature, review an existing structure,
-  or wants to know the "right" way to split components, hooks, and API layers.
-  Apply even when the request is phrased casually — e.g. "how should I
-  organise my React app", "where do I put my fetch logic", "how do I structure
-  a feature folder".
+Feature-first React architecture using role folders, HLC (High-Level Component)
+composition, concrete imports, and scalable module boundaries.
+Use when creating a new frontend project, feature, page, component, hook,
+store, API integration, or project structure.
+---------------------------------------------
+
+# Frontend Project Architecture
+
+## Golden Rules
+
+1. **Feature-first architecture** — organize by business capability, not technical type.
+2. **Downward-only dependencies** — `app → features → shared → infra`.
+3. **Single router ownership** — all routes registered in `app/router.tsx`.
+4. **Concrete imports only** — never import through feature barrels.
+5. **No cross-feature dependencies** — shared logic belongs in `shared/`.
+6. **Server state ≠ Client state**
+
+   * Server state → TanStack Query
+   * Client state → Zustand
+7. **Page components compose only**
+
+   * No API calls
+   * No business logic
+   * No state orchestration
+
 ---
 
-# React LLM-friendly feature-based architecture
+# Project Structure
 
-A pattern for React apps that keeps every feature self-contained and small
-enough to fit in a single LLM context window — making AI-assisted development
-faster and more accurate.
-
----
-
-## Core idea
-
-Group code by **feature**, not by type. Every file a feature needs lives in
-one folder. A feature is anything a user can *do* (auth, checkout, dashboard).
-
-```
+```text
 src/
-├── features/          # one folder per user-facing feature
+├── app/
+│   ├── router.tsx
+│   ├── providers/
+│   └── layouts/
+│
+├── features/
 │   ├── auth/
-│   ├── products/
-│   └── checkout/
-├── shared/            # zero feature imports — pure utilities + UI atoms
+│   ├── dashboard/
+│   └── ...
+│
+├── shared/
 │   ├── ui/
+│   ├── components/
 │   ├── hooks/
-│   └── lib/
-└── app/               # router, global store, providers
-    ├── router.tsx
-    └── store.ts
+│   ├── utils/
+│   ├── types/
+│   └── constants/
+│
+└── infra/
+    ├── api/
+    ├── config/
+    ├── i18n/
+    └── services/
 ```
 
 ---
 
-## Feature folder anatomy
+# Feature Structure
 
-Every feature follows this exact file layout. Introduce files only when needed;
-start with just `Page`, `useFeature`, and `api`:
-
-```
-features/auth/
-├── AuthPage.tsx        # entry point — composes only, no logic
-├── LoginForm.tsx       # presentational — props in, JSX out
-├── useAuth.ts          # all state + side-effects for this feature
-├── auth.api.ts         # raw network calls, no React imports
-├── auth.types.ts       # TypeScript types — the feature's vocabulary
-└── auth.test.ts        # colocated tests
-```
-
-### File roles
-
-| File | Purpose | Rules |
-|------|---------|-------|
-| `FeaturePage.tsx` | Compose hooks + components | No fetch, no business logic. Target ≤ 80 lines. |
-| `FeatureForm.tsx` / `FeatureList.tsx` | Presentational components | Props only. No hooks except `useState` for local UI. |
-| `useFeature.ts` | State, effects, derived values | Returns a stable typed API. Declare `@returns` JSDoc. |
-| `feature.api.ts` | Network layer | No React imports. Pure: args in → typed response out. |
-| `feature.types.ts` | TypeScript types | Attach to every LLM prompt about this feature. |
-| `feature.test.ts` | Tests | Colocated, not in a separate `__tests__/` folder. |
-
----
-
-## Dependency rules (hard boundaries)
-
-```
-app/  →  features/  →  shared/
-                  ↑
-     features may NOT import each other
-```
-
-- `shared/` never imports from `features/`
-- Features never import from other features — communicate through `app/store.ts` or URL state
-- `app/` wires features together via the router and global store
-
----
-
-## File naming conventions
-
-Follow these suffixes consistently — LLMs infer context from filenames:
-
-| Suffix | Example | Meaning |
-|--------|---------|---------|
-| `.page.tsx` | `AuthPage.tsx` | Feature entry point |
-| `.api.ts` | `auth.api.ts` | Network / data-fetching layer |
-| `.types.ts` | `auth.types.ts` | TypeScript types |
-| `.test.ts` | `auth.test.ts` | Tests |
-| `.store.ts` | `ui.store.ts` | Feature-scoped Zustand slice |
-| (no suffix) | `LoginForm.tsx` | Component |
-| `use*.ts` | `useAuth.ts` | Custom hook |
-
----
-
-## Data flow
-
-```
-Router
-  └─ FeaturePage.tsx          (compose only)
-        ├─ useFeature.ts       (state + effects)
-        │     ├─ store.ts      (global state — session, theme)
-        │     └─ feature.api.ts → REST / tRPC / GraphQL
-        └─ FeatureForm.tsx     (presentational)
+```text
+features/<feature-name>/
+│
+├── FeaturePage.tsx
+│
+├── components/
+│   ├── FeatureCard.tsx
+│   │
+│   └── FeatureSection/
+│       ├── index.tsx
+│       └── components/
+│           ├── Header.tsx
+│           ├── Content.tsx
+│           └── Footer.tsx
+│
+├── hooks/
+│   └── useFeature.ts
+│
+├── stores/
+│   └── feature.store.ts
+│
+├── types/
+│   └── feature.types.ts
+│
+├── schemas/
+│   └── feature.schema.ts
+│
+├── services/
+│   └── feature.service.ts
+│
+├── __tests__/
+│
+└── __componentTests__/
 ```
 
 ---
 
-## LLM-friendly conventions
+# HLC (High-Level Component)
 
-### 1. Keep files small
-Target ≤ 150 lines per file. Smaller files fit entirely in one context window,
-producing more accurate suggestions. If a file grows beyond this, split by
-extracting a child component or a second hook.
+Use HLC when a component becomes a small feature by itself.
 
-### 2. Explicit return types on hooks
-```ts
-// ✅ Good — LLM sees the full contract at a glance
-export function useAuth(): {
-  user: User | null;
-  login: (creds: Credentials) => Promise<void>;
-  logout: () => void;
-  status: 'idle' | 'loading' | 'error';
-} { … }
+## Simple Component
 
-// ❌ Bad — LLM must infer return shape from implementation
-export function useAuth() { … }
+```text
+components/
+└── UserCard.tsx
 ```
 
-### 3. Types file as context attachment
-`auth.types.ts` gives an LLM the full domain vocabulary in ~30 lines. Always
-attach it when prompting about a feature.
+## HLC Component
 
-```ts
-// auth.types.ts — attach to every LLM prompt about auth
-export interface User { id: string; email: string; role: 'admin' | 'viewer'; }
-export interface Credentials { email: string; password: string; }
-export type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'error';
+```text
+components/
+└── UserProfile/
+    ├── index.tsx
+    └── components/
+        ├── Avatar.tsx
+        ├── UserInfo.tsx
+        └── UserActions.tsx
 ```
 
-### 4. Pure API functions
-```ts
-// auth.api.ts — no React, no side effects
-export async function loginUser(creds: Credentials): Promise<User> {
-  const res = await fetch('/api/auth/login', {
-    method: 'POST',
-    body: JSON.stringify(creds),
-  });
-  if (!res.ok) throw new ApiError(res.status);
-  return res.json();
-}
+### HLC Rules
+
+* Public entry = `index.tsx`
+* Internal parts stay inside `components/`
+* Internal components are private
+* HLC can contain hooks/types if complexity grows
+* Prefer HLC once component contains 2+ tightly related sub-components
+
+Example:
+
+```tsx
+import UserProfile from '@/features/user/components/UserProfile';
 ```
 
-Pure functions with typed signatures generate correct tests with zero extra
-prompting. Mark the file with `// generated-safe` if it's fully regenerable.
+Never:
 
-### 5. Named parameters on hooks
-```ts
-// ✅ Named params survive refactors without breaking call sites
-useProducts({ page: 1, filter: 'active' })
-
-// ❌ Positional args break when a new param is inserted
-useProducts(1, 'active')
+```tsx
+import Avatar from '@/features/user/components/UserProfile/components/Avatar';
 ```
-
-### 6. One export per file
-Default export = the main thing. Named exports = types only.
-LLMs should never have to guess which export is primary.
-
-### 7. Sparse barrel files
-Only export at the feature boundary (`features/auth/index.ts`). Avoid deep
-barrel chains — they obscure import origins.
-
-```ts
-// features/auth/index.ts — only what shared code needs
-export type { User, AuthStatus } from './auth.types';
-export { useAuth } from './useAuth';
-```
-
-### 8. Pin dependency versions in comments
-```ts
-// queryClient.ts — TanStack Query v5
-// Upgrade guide: https://tanstack.com/query/v5/docs/react/guides/migrating-to-v5
-```
-Prevents stale completions from models trained on older API shapes.
 
 ---
 
-## Scaffolding a new feature
+# Import Rules
 
-When asked to scaffold a feature, produce files in this order:
+## Good
 
-1. `feature.types.ts` — define the domain types first
-2. `feature.api.ts` — typed network functions
-3. `useFeature.ts` — hook with explicit return type
-4. `FeaturePage.tsx` — thin composition page
-5. `feature.test.ts` — at minimum, tests for the hook
+```tsx
+import { useAuth } from '@/features/auth/hooks/useAuth';
 
-Ask the user for:
-- Feature name (used to derive all filenames)
-- Data shape / API endpoint
-- Key user actions (login, submit, delete…)
-- Global state needed (if any)
+import UserCard from '@/features/user/components/UserCard';
 
----
+import UserProfile from '@/features/user/components/UserProfile';
 
-## Reviewing an existing structure
+import { Button } from '@/shared/ui/button';
+```
 
-When asked to review a React codebase structure, check for:
+## Bad
 
-- [ ] Files grouped by feature, not by type (`components/`, `hooks/` at root = red flag)
-- [ ] Feature folders contain their own `*.api.ts` and `*.types.ts`
-- [ ] No cross-feature imports
-- [ ] Page components under 80 lines
-- [ ] Hook return types are explicit
-- [ ] Tests colocated next to source
-- [ ] `shared/` has zero feature imports
-- [ ] Barrel files exist only at feature boundary
+```tsx
+import { useAuth } from '@/features/auth';
 
-Report findings as a short table: file / issue / recommended fix.
+import { UserCard } from '@/features/user';
+
+import Avatar from '@/features/user/components/UserProfile/components/Avatar';
+```
 
 ---
 
-## Technology recommendations
+# Component Hierarchy
 
-These pair well with this architecture but are not required:
-
-| Concern | Recommended | Why LLM-friendly |
-|---------|-------------|-----------------|
-| Server state | TanStack Query v5 | Key factory pattern is easy to generate |
-| Client state | Zustand | Tiny API, one-file slices |
-| Routing | React Router v6 | Declarative, easy to scaffold |
-| Types | TypeScript strict mode | Explicit types = better completions |
-| Testing | Vitest + Testing Library | Colocated, fast, minimal config |
-| Forms | React Hook Form | Uncontrolled — less state to explain to an LLM |
+| Level             | Location                   | Purpose                      |
+| ----------------- | -------------------------- | ---------------------------- |
+| Shared UI         | shared/ui                  | Pure reusable UI             |
+| Shared HLC        | shared/components          | Reusable composed components |
+| Feature Component | features/X/components      | Feature-specific UI          |
+| Feature HLC       | features/X/components/X    | Complex feature UI           |
+| Feature Page      | features/X/FeaturePage.tsx | Route entry                  |
 
 ---
 
-## Quick reference: what to attach to LLM prompts
+# State Management
 
-| Task | Files to attach |
-|------|----------------|
-| Add a field to a form | `FeatureForm.tsx` + `feature.types.ts` |
-| Fix a bug in data fetching | `useFeature.ts` + `feature.api.ts` + `feature.types.ts` |
-| Write tests for the hook | `useFeature.ts` + `feature.types.ts` + `feature.test.ts` |
-| Add a new route | `router.tsx` + `FeaturePage.tsx` |
-| Debug global state | `store.ts` + `useFeature.ts` |
-| Regenerate API layer | `feature.api.ts` + `feature.types.ts` |
+| State Type   | Tool            |
+| ------------ | --------------- |
+| Server State | TanStack Query  |
+| Client State | Zustand         |
+| Form State   | React Hook Form |
+| Validation   | Zod             |
+
+Rules:
+
+* Never duplicate server state into Zustand.
+* Cache remote data with TanStack Query.
+* Keep local UI state close to components.
+
+---
+
+# API Layer
+
+```text
+infra/api/
+├── user.queries.ts
+├── user.mutations.ts
+├── order.queries.ts
+└── order.mutations.ts
+```
+
+Feature hooks consume API definitions.
+
+```tsx
+useUser();
+useCreateUser();
+```
+
+Pages never call APIs directly.
+
+---
+
+# Testing
+
+```text
+__tests__/
+```
+
+* Hooks
+* Business logic
+* Utilities
+
+```text
+__componentTests__/
+```
+
+* Components
+* Visual behavior
+* User interactions
+
+---
+
+# New Feature Checklist
+
+1. Create feature folder
+2. Add types
+3. Add schemas
+4. Add API definitions
+5. Create hooks
+6. Create page
+7. Create components
+8. Add store (if needed)
+9. Add tests
+10. Register route
+
+Order:
+
+```text
+types
+→ schemas
+→ api
+→ hooks
+→ page
+→ components
+→ store
+→ tests
+→ router
+```
+
+---
+
+# Decision Guide
+
+| Need                     | Location           |
+| ------------------------ | ------------------ |
+| Route Page               | Feature root       |
+| Business Component       | Feature components |
+| Reusable UI              | shared/ui          |
+| Shared Complex Component | shared/components  |
+| API Definition           | infra/api          |
+| Feature Hook             | feature/hooks      |
+| Client State             | feature/stores     |
+| Validation               | feature/schemas    |
+| Types                    | feature/types      |
+| Utility                  | shared/utils       |
+
+---
+
+# Default Stack
+
+* React
+* TypeScript
+* Vite
+* TanStack Query
+* Zustand
+* React Hook Form
+* Zod
+* Tailwind CSS
+* shadcn/ui
+* React Router
+* Vitest
+* Testing Library
+* ESLint
+* Prettier
+* Husky
+* lint-staged
+
+```
+```
