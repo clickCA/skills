@@ -1,12 +1,11 @@
 ---
-
 name: frontend-init-project
 description: >
-Feature-first React architecture using role folders, HLC (High-Level Component)
-composition, concrete imports, and scalable module boundaries.
-Use when creating a new frontend project, feature, page, component, hook,
-store, API integration, or project structure.
----------------------------------------------
+  Feature-first React architecture using role folders, HLC (High-Level Component)
+  composition, concrete imports, and scalable module boundaries.
+  Use when creating a new frontend project, feature, page, component, hook,
+  store, API integration, or project structure.
+---
 
 # Frontend Project Architecture
 
